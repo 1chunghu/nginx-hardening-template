@@ -55,6 +55,51 @@ grade. If your markup has no inline styles either, drop it for a perfect policy.
 4. Verify at [securityheaders.com](https://securityheaders.com) and in your
    browser devtools (watch for `securitypolicyviolation` console events).
 
+## Optional: Authenticated Origin Pulls (Cloudflare origins)
+
+If this site sits behind Cloudflare and you already restrict inbound 80/443
+to Cloudflare's IP ranges (e.g. with
+[cf-origin-firewall](https://github.com/1chunghu/cf-origin-firewall)), one gap
+remains: an IP allowlist verifies *who delivered the packet*, not *whose zone
+it came through* — anyone can point their own Cloudflare zone at your origin
+IP and arrive from the same edge ranges, skipping your WAF and rate limits.
+Authenticated Origin Pulls (mTLS) closes most of that gap by making nginx
+verify Cloudflare's client certificate on every origin pull.
+Companion write-up (zh-TW):
+[鎖了 IP 還不夠](https://1chung.net/blog/authenticated-origin-pulls/)
+
+1. Cloudflare Dashboard → SSL/TLS → Origin Server → **Authenticated Origin
+   Pulls** → enable the zone-wide switch. The free tier uses Cloudflare's
+   shared client certificate — nothing to generate or upload.
+2. Fetch the CA and place it where the *container* can actually read it:
+   <https://developers.cloudflare.com/ssl/static/authenticated_origin_pull_ca.pem>
+   (current CA expires **2029-11-01**; set a reminder to re-fetch).
+3. Uncomment the `ssl_client_certificate` / `ssl_verify_client` lines in
+   `nginx.conf`. Unlike `add_header`, these inherit normally — declared once
+   at http level, they cover every server block.
+4. Verify both directions: a request to port 443 **without** a client
+   certificate must fail with `400` ("No required SSL certificate was sent");
+   requests through Cloudflare must stay `200`.
+
+Scope note: the shared certificate proves the connection came from a
+Cloudflare edge — not that it came through *your* zone (an attacker can enable
+AOP on their own zone and present the same shared cert). Zone-level custom
+certificates close that too; either way, keep the unknown-Host catch-all
+(`00-default.conf` → `444`) and treat AOP as one layer, not a silver bullet.
+
+**Two deployment gotchas, learned the hard way:**
+
+1. **Know exactly which host directory your cert mount maps to.** Two
+   similarly named `certs/` directories on the host, one mounted into the
+   container and one not — the CA landed in the wrong one, and nginx went
+   into a crash-restart loop on the next restart, taking every site down.
+2. **`docker exec nginx nginx -t` can pass against a stale file.** When the
+   config is a single-file bind mount and you overwrite it with `cp`/`sed -i`,
+   a new inode is created — but the running container still reads the old one,
+   so the "syntax is ok" validated the *previous* config, not your change.
+   Only a `-t` re-run *after* `docker restart` proves anything; or test the
+   new file in a throwaway container before touching production.
+
 ## Note
 
 These security headers are, by design, fully public — every visitor's browser
