@@ -65,8 +65,6 @@ it came through* — anyone can point their own Cloudflare zone at your origin
 IP and arrive from the same edge ranges, skipping your WAF and rate limits.
 Authenticated Origin Pulls (mTLS) closes most of that gap by making nginx
 verify Cloudflare's client certificate on every origin pull.
-Companion write-up (zh-TW):
-[鎖了 IP 還不夠](https://1chung.net/blog/authenticated-origin-pulls/)
 
 1. Cloudflare Dashboard → SSL/TLS → Origin Server → **Authenticated Origin
    Pulls** → enable the zone-wide switch. The free tier uses Cloudflare's
